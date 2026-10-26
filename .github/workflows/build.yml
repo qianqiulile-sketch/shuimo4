@@ -15,16 +15,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 找到项目目录
+      - name: 解压并找到项目目录
         id: proj
         run: |
-          echo "仓库里的文件（前 4 层）："
-          find . -maxdepth 4 -not -path './.git/*' | sort | head -n 80
+          echo "仓库根目录的文件："
+          ls -la
+
+          # 项目文件还没解开（仓库里只有 zip）时，先把根目录下的 zip 解压到 _src/
+          if [ -z "$(find . -maxdepth 6 -path '*/app/build.gradle.kts' -not -path './.git/*' | head -n 1)" ]; then
+            ZIPS=$(find . -maxdepth 1 -name '*.zip')
+            if [ -z "$ZIPS" ]; then
+              echo "::error::仓库里既没有项目文件，也没有 zip 压缩包"
+              exit 1
+            fi
+            mkdir -p _src
+            for z in $ZIPS; do
+              echo "解压 $z"
+              unzip -q -o "$z" -d _src
+            done
+          fi
 
           # 不管项目放在哪一层，只要找到 app/build.gradle.kts 就认定它的上两级是项目根目录
           APPFILE=$(find . -maxdepth 6 -path '*/app/build.gradle.kts' -not -path './.git/*' | head -n 1)
           if [ -z "$APPFILE" ]; then
-            echo "::error::仓库里没有 app/build.gradle.kts，项目文件没上传完整（需要 app 文件夹和 build.gradle.kts、settings.gradle.kts）"
+            echo "::error::找不到 app/build.gradle.kts，zip 里的项目文件不完整"
+            find . -maxdepth 4 -not -path './.git/*' | sort | head -n 80
             exit 1
           fi
           DIR=$(dirname "$(dirname "$APPFILE")")
@@ -39,7 +54,7 @@ jobs:
           fi
 
           if [ ! -f "$DIR/keystore/lingxi.jks" ]; then
-            echo "::error::缺少 keystore/lingxi.jks（签名文件），请连同 keystore 文件夹一起上传"
+            echo "::error::缺少 keystore/lingxi.jks（签名文件）"
             exit 1
           fi
 
